@@ -1,19 +1,24 @@
+
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
-import os, stat, sys
+import os, time, sys
 
 
-print(sys.executable)
-# -- TODO -- make the install location automatic
-# run a shell script??
-# sys.path.append( 'C:/Users/sophi/AppData/Local/Programs/Python/Python37/Lib/site-packages' )
-print(sys.path)
+'''
+-- TODO -- make the install location automatic
+ERROR handling. make lists selectable
+make the import statement not repeat
+run a shell script??
+'''
+# add in constructor and then deconstruct
+sys.path.append( 'C:/Users/sophi/AppData/Local/Programs/Python/Python37/Lib/site-packages' )
+
+
 try:
     from PIL import Image
-    print("import succeeded")
+    # print("import succeeded")
 except:
     print("import failed")
-
 
 
 def calculate_opacity(r1, r2, p):
@@ -23,112 +28,101 @@ def calculate_opacity(r1, r2, p):
     opacity = tuple(int((1 - p) * c1 + p * c2) for c1, c2 in zip(r1, r2))
     return opacity
 
-def blend_image(tiled_image):
-    # Open the image
-    # img = Image.open(image_path)
 
-    img = tiled_image
-    # Get image dimensions
-    width, height = img.size
-    
-    # Split the image into two halves
-    half_width = width // 2
-    fourth_width = width // 4
-    half_height = height // 2
-    fourth_height = height // 4
-    print("image width: " + str(width))
+def import_texture(file_path, texture_name=None):
+    """
+    Imports a texture into the Maya project.
 
-    stretch_area = half_width * height
-    # print(stretch_area)
-    # stretch_area_heig = half_width * height
+    :param file_path: The file path of the texture.
+    :param texture_name: The name to assign to the texture node. If None, the file name will be used.
+    """
+    if not file_path:
+        raise ValueError("File path cannot be empty")
     
-    
-    # Create a new image with the same dimensions and mode
-    blended_img = Image.new(img.mode, img.size)
-    blended_img2 = Image.new(img.mode, img.size)
-    blended_img3 = Image.new(img.mode, img.size)
-    blended_img4 = Image.new(img.mode, img.size)
-    
-    count = 0
+    # Extract the file name without extension if texture_name is not provided
+    if not texture_name:
+        texture_name = file_path.split('/')[-1].split('.')[0]
 
-    # Right to left stretch
-    for x in reversed(range(width)):
-        # print(x)
-        for y in range(height):
-            if x > half_width:
-                blended_img2.putpixel((x,y), img.getpixel((x,y)))
-            # stretch image
-            if x > fourth_width and x < width - fourth_width:
-                # stretched_x = int(x - ((count/stretch_area) * stretch_area))
-                stretched_x = int((x ) * ((1 + (count/stretch_area))))
+    # Create a file texture node
+    texture_node = cmds.shadingNode('file', asTexture=True, name=texture_name)
 
-                getPixel = img.getpixel((stretched_x , y))
-                blended_img2.putpixel((x,y), getPixel)
-                count += 1
-    
-    print("stretched x right: " + str(stretched_x))
-    print(x)
-    # print(stretch_area)
+    # Set the file path to the texture node
+    cmds.setAttr(f"{texture_node}.fileTextureName", file_path, type="string")
+
+    # Create a shading group and assign the texture to it
+    shading_group = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=f"{texture_name}_SG")
+    shader = cmds.shadingNode('lambert', asShader=True, name=f"{texture_name}_shader")
+    cmds.connectAttr(f"{shader}.outColor", f"{shading_group}.surfaceShader", force=True)
+    cmds.connectAttr(f"{texture_node}.outColor", f"{shader}.color", force=True)
+
+    print(f"Texture '{file_path}' imported and assigned to shader '{shader}'")
+
+
+def blend_seam(img1, img2, xy):
+    width, height = img1.size #get dimensions
+    new_width = int(width * 1.5)
+    new_height = int(height * 1.5)
 
     count = 0
-    # Left to right stretch
-    for x in range(width):
-        for y in range(height):
-
-            getPixel = img.getpixel(( x , y))
-            if x < half_width:
-                blended_img.putpixel((x,y), img.getpixel((x,y)))
-                p=0
-            # stretch image
-            if x > fourth_width and x < width - fourth_width:
-                stretched_x = int(x / ((1 + (count/stretch_area))))
-                # stretched_x = int(x * (count/stretch_area))
-                
-                count += 1
-
-                getPixel = img.getpixel(( stretched_x , y))
-
-                p= count/stretch_area
-            # set opacity to 1 on the right side of the image
-            elif x > width - fourth_width:
-                p= 1
-            # print(p)
-            right_pixel = blended_img2.getpixel((x,y))
-            featherPixel = calculate_opacity(getPixel, right_pixel, p )
-            # featherPixel = calculate_opacity((225,225,225), (0,0,0), 0.5)
-
-            blended_img.putpixel((x,y), featherPixel)
-      
-    count = 0
-
-    # bottom to top stretch
-    for x in range(width):
-        # print(x)
-        for y in range(height):
-            if y > half_height:
-                blended_img3.putpixel((x,y), blended_img.getpixel((x,y)))
-            # stretch image
-            if y > fourth_height and y < height - fourth_height:
-                # print(count)
-                # stretched_y = int( y * (1 + (count/ 150000))) 
-                # sa = 64261    50219
-                stretched_y = int( (y) / (1 + (count / (stretch_area )))) 
-
-                # print(stretched_y)
-                # getPixel = blended_img.getpixel((x , stretched_y ))
-                blended_img3.putpixel((x,y), getPixel )
-                count += 1
     
+    if xy == True:
+        new_img = Image.new(img1.mode, (new_width, height)) #make new image 1.5 X size
+        stretch_area = (width//2) * height
+
+        for x in range(new_width):
+            p= count/stretch_area #set opacity
+
+            for y in range(height):
+                if (x > new_width - width and x < width) : #check if value is within the range
+                    count += 1
+
+                    pixel1 = img1.getpixel((x , y))
+                    pixel2 = img2.getpixel((x - (width/2), y))
+
+                    featherpixel = calculate_opacity(pixel1, pixel2, p)
+
+                    new_img.putpixel( (x, y), featherpixel)
+
+                elif x <= width/2 :
+                    new_img.putpixel((x,y), img1.getpixel((x , y)))
+                else:
+                    new_img.putpixel((x,y), img2.getpixel((x - (width/2) , y)))
+
+
+    if xy == False:
+
+        new_img = Image.new(img1.mode, (width, new_height)) #make new image 1.5 X size
+        stretch_area = height//2
+
+
+        for x in range(width):
+            count = 0
+        
+            for y in range(new_height):
+
+                if y > height//2 and y < new_height - (height // 2): #1-0 or 0-1
+                    p= count/ stretch_area #set opacity
+                    
+                    pixel1 = img1.getpixel((x , y))
+                    pixel2 = img2.getpixel((x, y - (height/2)))
+                    featherpixel = calculate_opacity(pixel1, pixel2, p)
+
+                    new_img.putpixel( (x, y), featherpixel)
+
+                    count += 1
+
+                elif y <= height//2:
+                    new_img.putpixel( (x,y), img1.getpixel( (x,y) ) )
+                elif y >= height :
+                    new_img.putpixel( (x,y) ,img2.getpixel((x, y - (height/2))))
+            
+
+    return new_img
     
-    # print(stretch_area)
-    print("stretched y bottom: " + str(stretched_y))
-    print(y)
-    blended_img3.show()
-    return blended_img
 
 def make_tileable(image_path): 
     folder = image_path.rsplit("/", 1)[0]
-
+ 
     # os.makedirs(os.path.dirname(image_path), exist_ok=True)
     os.makedirs(os.path.dirname(folder), exist_ok=True)
 
@@ -138,43 +132,40 @@ def make_tileable(image_path):
     # Create a new image with double the width and height of the original. Make sure the image is a square.
     width, height = image.size
     if(width < height):
-        new_image = Image.new('RGB', (width * 2, width * 2))
-        image = image.crop((0 , (height-width)//2 ,width , height - (height-width)//2 ))
-        # image.show()
+        new_image = Image.new('RGB', (width , width ))
         height = width
     elif(width > height):
-        new_image = Image.new('RGB', (height * 2, height * 2))
-        # im1 = im.crop((left, top, right, bottom))
-        image = image.crop((  (width - height)//2 , 0 , width - ((width - height)//2), height  ))
-        # image.show()
+        new_image = Image.new('RGB', (height , height ))
         width = height
     elif(width == height):
-        new_image = Image.new('RGB', (width * 2, height * 2))
+        new_image = Image.new('RGB', (width , height ))
     
     # Place the original image at the four corners of the new image
-    
-    new_image.paste(image, (0, 0))
-    new_image.paste(image, (width, 0))
-    new_image.paste(image, (0, height))
-    new_image.paste(image, (width, height))
-    
-    # Crop the new image back to the original size
-    new_image = new_image.crop((width//2, height//2, width//2 + width, height//2 + height))
-    # image = Image.new('RGB', (width, height), color)
+    scale = int(width * 1.25)
+    half_scale = scale//2
+
+    image = image.resize((scale, scale))
+
+    # get corners   ((left, top, right, bottom))
+    left_top = image.crop((half_scale, half_scale, scale, scale))
+    right_top = image.crop((0, half_scale, half_scale, scale))
+    left_bottom = image.crop((half_scale, 0, scale, half_scale))
+    right_bottom = image.crop((0, 0, half_scale, half_scale))
+
+    # --- blend seams ---
+    top_half = blend_seam(left_top, right_top, True)
+    bottom_half = blend_seam(left_bottom, right_bottom, True)
+    new_image = blend_seam(top_half, bottom_half, False)
 
 
-
-    
-    # Save the tileable image
-    # newDir = 'C:/Users/sophi/OneDrive/Desktop/TileMe/Tile-Me/out.png'
-    # image.save("retry.jpg")
-    # TODO -- MAKE SURE SAME EXTENSION
-    new_image = blend_image(new_image)
-    out_name = "/tiled_" + image_path.rsplit("/", 1)[1] 
-    print(out_name)
-    new_image.save(folder + out_name)  
     # new_image.show()
 
+
+    out_name = "/tiled_" + image_path.rsplit("/", 1)[1] 
+    # print(out_name)
+    new_image.save(folder + out_name)
+
+    return folder + out_name #for getting the import  
 
 
 def maya_useNewAPI():
@@ -192,34 +183,28 @@ class TileMe(om.MPxCommand):
 
         # get file location of selected image > get all selected
         selected = cmds.ls(sl=True,long=True) or []
-        print("selected objects: " + str(selected[0]))
-        attribute = selected[0]
-        print("attribute: " + str(attribute))
-        # works for pcone object
-        # attribute = attribute + ".translateX"
-        # location = cmds.getAttr(attribute)
+        # print("selected objects: " + str(selected))
+            
+        for i in selected:
+            attribute = i
 
-        # get Mobject? check Mimage.writeToFile
+            # print( "attribute" + str(attribute))
+            attribute = attribute + ".fileTextureName"
+            location = cmds.getAttr(attribute)
 
-        attribute = attribute + ".fileTextureName"
-        location = cmds.getAttr(attribute)
+            # print("attribute list: " + str(cmds.listAttr( r=True, s=True )))
+            # TODO fix for all file types
 
-        # print("attribute list: " + str(cmds.listAttr( r=True, s=True )))
-           # TODO fix for all file types
+            # print( "selected attribute location: " + location)
 
-        print( "selected attribute location: " + str(location))
-        folder = location.rsplit("/", 1)
-        folder = folder[0] 
-        print(folder)
-        os.makedirs(os.path.dirname(folder), exist_ok=True)
+            folder = location.rsplit("/", 1)
+            folder = folder[0] 
+            os.makedirs(os.path.dirname(folder), exist_ok=True)
 
-        # Example usage
-        file_location = 'C:/Users/sophi/OneDrive/Desktop/TileMe/Tile-Me/empty_image.png'
-        image_width = 800
-        image_height = 600
-        # create_empty_image(file_location, image_width, image_height)
+            tiled_texture = make_tileable( location )
+            import_texture( tiled_texture )
 
-        make_tileable( location )
+
 
     @classmethod 
     def creator(cls):
@@ -227,11 +212,12 @@ class TileMe(om.MPxCommand):
 
 
 def initializePlugin(plugin):
-    print("---TileMe plugin initialized---")
+    # print("---TileMe plugin initialized---")
     vendor = "SB"
     version = "1.0"
 
     plugin_fn = om.MFnPlugin(plugin, vendor, version)
+
 
     try:
         plugin_fn.registerCommand(TileMe.COMMAND_NAME, TileMe.creator)
@@ -244,6 +230,8 @@ def initializePlugin(plugin):
 def uninitializePlugin(plugin):
     # pass
     plugin_fn = om.MFnPlugin(plugin)
+    sys.path.remove( 'C:/Users/sophi/AppData/Local/Programs/Python/Python37/Lib/site-packages' )
+    # print(sys.path)
     try:
         plugin_fn.deregisterCommand(TileMe.COMMAND_NAME)
     except:
@@ -254,3 +242,5 @@ if __name__ == "__main__":
 
     cmds.evalDeferred('if cmds.pluginInfo("{0}", q=True, loaded=True): cmds.unloadPlugin("{0}")'.format(plugin_name))
     cmds.evalDeferred('if not cmds.pluginInfo("{0}", q=True, loaded=True): cmds.aloadPlugin("{0}")'.format(plugin_name))
+
+
