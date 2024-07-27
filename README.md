@@ -3,7 +3,7 @@
 
  1. run "pip install Pillow" in the command line
     
- 2. Drop Tile_Me.py into C:\Users\sophi\OneDrive\Documents\maya\2022\plug-ins
+ 2. Drop Tile_Me.py into \Documents\maya\2022\plug-ins
 
  3. Enable Tile_Me in the plugin manager
 
